@@ -487,12 +487,12 @@ func DetectOutputs() (Outputs, error) {
 // Outputs and a list of output names, optionally followed by "@" and the
 // desired mode, e.g. LVDS1@1377x768.
 func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
-	var outputs []string
+	var outputs []*OutputConfig
 	var row bool
 
 	switch {
-	case rule.ConfigureSingle != "":
-		outputs = []string{rule.ConfigureSingle}
+	case rule.ConfigureSingle != nil:
+		outputs = []*OutputConfig{rule.ConfigureSingle}
 	case len(rule.ConfigureRow) > 0:
 		outputs = rule.ConfigureRow
 		row = true
@@ -511,21 +511,17 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 	active := make(map[string]struct{})
 	var lastOutput = ""
 	for i, output := range outputs {
-		data := strings.SplitN(output, "@", 2)
-		name := data[0]
-		mode := ""
-		if len(data) > 1 {
-			mode = data[1]
+		active[output.Name] = struct{}{}
+		args := []string{}
+		args = append(args, "--output", output.Name)
+		if output.Mode != "" {
+			args = append(args, "--mode", output.Mode)
+		} else {
+			args = append(args, "--auto")
 		}
 
-		active[name] = struct{}{}
-
-		args := []string{}
-		args = append(args, "--output", name)
-		if mode == "" {
-			args = append(args, "--auto")
-		} else {
-			args = append(args, "--mode", mode)
+		if output.DPI != "" {
+			args = append(args, "--dpi", output.DPI)
 		}
 
 		if i > 0 {
@@ -536,11 +532,11 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 			}
 		}
 
-		if rule.Primary == name {
+		if rule.Primary == output.Name {
 			args = append(args, "--primary")
 		}
 
-		lastOutput = name
+		lastOutput = output.Name
 		enableOutputArgs = append(enableOutputArgs, args)
 	}
 

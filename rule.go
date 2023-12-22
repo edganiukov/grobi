@@ -4,15 +4,15 @@ package main
 type Rule struct {
 	Name string
 
-	OutputsConnected    []string `yaml:"outputs_connected"`
-	OutputsDisconnected []string `yaml:"outputs_disconnected"`
-	OutputsPresent      []string `yaml:"outputs_present"`
-	OutputsAbsent       []string `yaml:"outputs_absent"`
+	OutputsConnected    []string `yaml:"outputs_connected,omitempty"`
+	OutputsDisconnected []string `yaml:"outputs_disconnected,omitempty"`
+	OutputsPresent      []string `yaml:"outputs_present,omitempty"`
+	OutputsAbsent       []string `yaml:"outputs_absent,omitempty"`
 
-	ConfigureRow     []string `yaml:"configure_row"`
-	ConfigureColumn  []string `yaml:"configure_column"`
-	ConfigureSingle  string   `yaml:"configure_single"`
-	ConfigureCommand string   `yaml:"configure_command"`
+	ConfigureRow     []*OutputConfig `yaml:"configure_row,omitempty"`
+	ConfigureColumn  []*OutputConfig `yaml:"configure_column,omitempty"`
+	ConfigureSingle  *OutputConfig   `yaml:"configure_single,omitempty"`
+	ConfigureCommand string          `yaml:"configure_command,omitempty"`
 
 	Primary string `yaml:"primary"`
 
@@ -21,6 +21,12 @@ type Rule struct {
 	Atomic bool `yaml:"atomic"`
 
 	ExecuteAfter []string `yaml:"execute_after"`
+}
+
+type OutputConfig struct {
+	Name string `yaml:"name"`
+	Mode string `yaml:"mode"`
+	DPI  string `yaml:"dpi"`
 }
 
 // Match returns true iff the rule matches for the given list of outputs.

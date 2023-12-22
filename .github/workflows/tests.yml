@@ -14,8 +14,7 @@ jobs:
       matrix:
         # list of jobs to run:
         go:
-          - 1.15.x
-          - 1.16.x
+          - 1.21.x
 
     name: Go ${{ matrix.go }}
     runs-on: ubuntu-latest
@@ -26,35 +25,24 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
 
-      - name: Check out code
+      - name: Checkout code
         uses: actions/checkout@v2
-
-      - name: Build
-        run: |
-          go build
-
-      - name: Run local Tests
-        run: |
-          go test -cover ./...
-
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
-        with:
-          # Required: the version of golangci-lint is required and must be
-          # specified without patch version: we always use the latest patch
-          # version.
-          version: v1.37
-          args: --verbose --timeout 5m
 
       - name: Check go.mod/go.sum
         run: |
-          echo "check if go.mod and go.sum are up to date"
           go mod tidy
           git diff --exit-code go.mod go.sum
+
+      - name: Run staticcheck
+        uses: dominikh/staticcheck-action@v1.3.0
+        with:
+          install-go: false
+          version: "2022.1.3"
+
+      - name: Go build
+        run: |
+          go build ./...
+
+      - name: Go test
+        run: |
+          go test -cover ./...
