@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // Rule is a rule to configure outputs.
 type Rule struct {
 	Name string
@@ -14,12 +16,9 @@ type Rule struct {
 	ConfigureSingle  *OutputConfig   `yaml:"configure_single,omitempty"`
 	ConfigureCommand string          `yaml:"configure_command,omitempty"`
 
-	Primary string `yaml:"primary"`
-
+	Primary      string   `yaml:"primary"`
 	DisableOrder []string `yaml:"disable_order"`
-
-	Atomic bool `yaml:"atomic"`
-
+	Atomic       bool     `yaml:"atomic"`
 	ExecuteAfter []string `yaml:"execute_after"`
 }
 
@@ -27,6 +26,10 @@ type OutputConfig struct {
 	Name string `yaml:"name"`
 	Mode string `yaml:"mode"`
 	DPI  string `yaml:"dpi"`
+}
+
+func (cfg OutputConfig) String() string {
+	return fmt.Sprintf("%s --mode %s --dpi %s", cfg.Name, cfg.Mode, cfg.DPI)
 }
 
 // Match returns true iff the rule matches for the given list of outputs.

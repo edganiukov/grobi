@@ -18,27 +18,27 @@ $ go build
 Afterwards please find a binary of grobi in the current directory:
 ```
 $ ./grobi --help
-Usage:
-  grobi [OPTIONS] <command>
-
-Application Options:
-  -v, --verbose   Be verbose (false)
-  -C, --config=   Read config from this file
-  -n, --dry-run   Only print what commands would be executed without actually
-                  runnig them
-  -i, --interval= Number of seconds between polls, set to zero to disable
-                  polling (5)
-  -p, --pause=    Number of seconds to pause after a change was executed (2)
-  -l, --logfile=  Write log to file
-
-Help Options:
-  -h, --help      Show this help message
+Usage of ./grobi:
+  -active-poll
+        Force xrandr to re-detect outputs during polling.
+  -config string
+        The path to a config file.
+  -dry-run
+        Enable dry-run mode: print commands instead of running them.
+  -interval duration
+        Duration between polls. Set to zero to disable polling. (default 2s)
+  -pause duration
+        Number of seconds to pause after a change was executed.
+  -verbose
+        Enable verbose logging
 
 Available commands:
-  apply    apply a rule
-  update   update outputs
-  version  display version
-  watch    watch for changes
+        version Display the version.
+        apply   Apply a rule to configure the outputs accordingly.
+        rules   List the configured rules.
+        show    Show monitors and IDs.
+        update  Update outputs config.
+        watch   Watch for XRANDR changes.
 
 ```
 

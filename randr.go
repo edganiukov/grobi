@@ -8,11 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
 )
+
+// ErrNotModeLine is returned by parseModeLine when the line doesn't match
+// the format for a mode line.
+var ErrNotModeLine = errors.New("not a mode line")
+
+const xrandrCommand = "xrandr"
 
 // Output encapsulates a physical output with detected modes.
 type Output struct {
@@ -33,8 +40,8 @@ func (o Output) String() string {
 	case o.Primary:
 		con = " (primary)"
 	}
-	str := fmt.Sprintf("%s%s", o.Name, con)
 
+	str := o.Name + con
 	if len(o.Modes) > 0 {
 		for _, m := range o.Modes {
 			if m.Active || m.Default {
@@ -144,11 +151,8 @@ func (os Outputs) Equals(other Outputs) bool {
 		return false
 	}
 
-	for i := range os {
-		out1 := os[i]
-		out2 := other[i]
-
-		if !out1.Equals(out2) {
+	for i, o := range os {
+		if !o.Equals(other[i]) {
 			return false
 		}
 	}
@@ -190,9 +194,8 @@ func (m Modes) String() string {
 
 // GenerateMonitorID derives the monitor id from the edid
 func GenerateMonitorID(s string) (string, error) {
-	var errEdidCorrupted = errors.New("corrupt EDID: " + s)
 	if len(s) < 32 || s[:16] != "00ffffffffffff00" {
-		return "", errEdidCorrupted
+		return "", errors.New("invalid EDID: " + s)
 	}
 
 	edid, err := hex.DecodeString(s)
@@ -209,7 +212,7 @@ func GenerateMonitorID(s string) (string, error) {
 
 	// The first bit is resevered and needs to be zero
 	if manuf&0x8000 != 0x0000 {
-		return "", errEdidCorrupted
+		return "", errors.New("invalid EDID: " + s)
 	}
 
 	// Decode the manufacturer 'A' = 0b00001, 'B' = 0b00010, ..., 'Z' = 0b11010
@@ -245,10 +248,6 @@ func GenerateMonitorID(s string) (string, error) {
 	str := fmt.Sprintf("%s-%d-%d-%v-%v", manufacturer, product, serial, displayName, displaySerialNumber)
 	return str, nil
 }
-
-// errNotModeLine is returned by parseModeLine when the line doesn't match
-// the format for a mode line.
-var errNotModeLine = errors.New("not a mode line")
 
 // parseOutputLine returns the output parsed from the string.
 func parseOutputLine(line string) (Output, error) {
@@ -303,7 +302,7 @@ func parseOutputLine(line string) (Output, error) {
 // parseModeLine returns the mode parsed from the string.
 func parseModeLine(line string) (mode Mode, err error) {
 	if !strings.HasPrefix(line, "  ") {
-		return Mode{}, errNotModeLine
+		return Mode{}, ErrNotModeLine
 	}
 
 	ws := bufio.NewScanner(bytes.NewReader([]byte(line)))
@@ -339,6 +338,7 @@ var errNotEdidLine = errors.New("not an edid line")
 
 // parseEdidLine returns the partial EDID on that line
 func parseEdidLine(line string) (edid string, err error) {
+	// TODO: implement more robust parsing.
 	if !strings.HasPrefix(line, "		") {
 		return "", errNotEdidLine
 	}
@@ -387,7 +387,7 @@ nextLine:
 					state = StateOutput
 					continue nextLine
 				}
-				return nil, fmt.Errorf(`first line should start with "Screen", found: %v`, line)
+				return nil, fmt.Errorf("first line should start with 'Screen', found: %s", line)
 
 			case StateOutput:
 				output, err = parseOutputLine(line)
@@ -428,7 +428,7 @@ nextLine:
 
 			case StateMode:
 				mode, err := parseModeLine(line)
-				if err == errNotModeLine {
+				if errors.Is(err, ErrNotModeLine) {
 					outputs = append(outputs, output)
 					output = Output{}
 					state = StateOutput
@@ -455,7 +455,7 @@ nextLine:
 func runXrandr(extraArgs ...string) *exec.Cmd {
 	args := []string{"--query", "--props"}
 	args = append(args, extraArgs...)
-	cmd := exec.Command("xrandr", args...)
+	cmd := exec.Command(xrandrCommand, args...)
 	cmd.Stderr = os.Stderr
 	return cmd
 }
@@ -503,17 +503,14 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 		return nil, errors.New("empty monitor row configuration")
 	}
 
-	V("enable outputs: %v\n", outputs)
+	slog.Info("enable outputs", "outputs", outputs)
 
-	command := "xrandr"
-	enableOutputArgs := [][]string{}
-
+	var enableOutputArgs [][]string
+	var lastOutput string
 	active := make(map[string]struct{})
-	var lastOutput = ""
 	for i, output := range outputs {
 		active[output.Name] = struct{}{}
-		args := []string{}
-		args = append(args, "--output", output.Name)
+		args := []string{"--output", output.Name}
 		if output.Mode != "" {
 			args = append(args, "--mode", output.Mode)
 		} else {
@@ -552,7 +549,7 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 		}
 	}
 
-	disableOutputArgs := [][]string{}
+	var disableOutputArgs [][]string
 
 	// honour disable_order if present
 	for _, name := range rule.DisableOrder {
@@ -572,7 +569,8 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 
 	// enable/disable all monitors in one call to xrandr
 	if rule.Atomic {
-		V("using one atomic call to xrandr\n")
+		slog.Info("using one atomic call to xrandr")
+
 		args := []string{}
 		for _, disableArgs := range disableOutputArgs {
 			args = append(args, disableArgs...)
@@ -580,18 +578,17 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 		for _, enableArgs := range enableOutputArgs {
 			args = append(args, enableArgs...)
 		}
-		cmd := exec.Command(command, args...)
+		cmd := exec.Command(xrandrCommand, args...)
 		return []*exec.Cmd{cmd}, nil
 	}
 
-	V("splitting the configuration into several calls to xrandr\n")
+	slog.Info("splitting the configuration into several calls to xrandr")
 
 	// otherwise return several calls to xrandr
-	cmds := []*exec.Cmd{}
-
+	var cmds []*exec.Cmd
 	// disable an output
 	if len(disableOutputArgs) > 0 {
-		cmds = append(cmds, exec.Command(command, disableOutputArgs[0]...))
+		cmds = append(cmds, exec.Command(xrandrCommand, disableOutputArgs[0]...))
 		disableOutputArgs = disableOutputArgs[1:]
 	}
 
@@ -607,7 +604,7 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 			enableOutputArgs = enableOutputArgs[1:]
 		}
 
-		cmds = append(cmds, exec.Command(command, args...))
+		cmds = append(cmds, exec.Command(xrandrCommand, args...))
 	}
 
 	return cmds, nil
@@ -619,16 +616,13 @@ func DisableOutputs(off Outputs) (*exec.Cmd, error) {
 		return nil, nil
 	}
 
-	command := "xrandr"
-	args := []string{}
-
+	var args []string
 	var outputs []string
 	for _, output := range off {
 		outputs = append(outputs, output.Name)
 		args = append(args, "--output", output.Name, "--off")
 	}
 
-	V("disable outputs: %v\n", outputs)
-
-	return exec.Command(command, args...), nil
+	slog.Info("disable outputs", "outputs", outputs)
+	return exec.Command(xrandrCommand, args...), nil
 }

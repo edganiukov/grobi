@@ -1,94 +1,78 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
-	"os/exec"
+	"os/signal"
 	"strings"
-
-	"github.com/jessevdk/go-flags"
+	"time"
 )
 
-// GlobalOptions contains all global options.
-type GlobalOptions struct {
-	Verbose      bool   `short:"v" long:"verbose"                     description:"Be verbose"`
-	Config       string `short:"C" long:"config"                      description:"Read config from this file"`
-	DryRun       bool   `short:"n" long:"dry-run"                     description:"Only print what commands would be executed without actually runnig them"`
-	PollInterval uint   `short:"i" long:"interval"    default:"2"     description:"Number of seconds between polls, set to zero to disable polling"`
-	ActivePoll   bool   `short:"a" long:"active-poll"                 description:"Force xrandr to re-detect outputs during polling"`
-	Pause        uint   `short:"p" long:"pause"       default:"0"     description:"Number of seconds to pause after a change was executed"`
-	Logfile      string `short:"l" long:"logfile"                     description:"Write log to file"`
+var (
+	opts Options
+)
 
-	cfg     *Config
-	log     *log.Logger
-	logfile *log.Logger
-}
-
-func (gopts *GlobalOptions) ReadConfigfile() error {
-	if gopts.cfg != nil {
-		return nil
-	}
-
-	cfg, err := readConfig(gopts.Config)
-	if err != nil {
-		return fmt.Errorf("error reading config file: %v", err)
-	}
-
-	gopts.cfg = &cfg
-	return nil
-}
-
-// RunCommand runs the given command or prints the arguments to stdout if
-// globalOpts.DryRun is true.
-func RunCommand(cmd *exec.Cmd) error {
-	if globalOpts.DryRun {
-		s := fmt.Sprintf("%s", cmd.Args)
-		fmt.Printf("%s\n", s[1:len(s)-1])
-		return nil
-	}
-
-	V("running command %v %v\n", cmd.Path, strings.Join(cmd.Args, " "))
-	cmd.Stderr = os.Stderr
-	if globalOpts.Verbose {
-		cmd.Stdout = os.Stdout
-	}
-	return cmd.Run()
-}
-
-var globalOpts = GlobalOptions{}
-var parser = flags.NewParser(&globalOpts, flags.Default)
-
-func V(s string, data ...interface{}) {
-	if globalOpts.Verbose && globalOpts.log == nil {
-		globalOpts.log = log.New(os.Stdout, "grobi: ", log.Lmicroseconds|log.Ltime)
-	}
-
-	if globalOpts.log != nil {
-		globalOpts.log.Printf(s, data...)
-	}
-
-	if globalOpts.Logfile != "" && globalOpts.logfile == nil {
-		f, err := os.OpenFile(globalOpts.Logfile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "unable to open logfile: %v\n", err)
-			os.Exit(23)
-		}
-		globalOpts.logfile = log.New(f, "", log.Lmicroseconds|log.Ltime)
-	}
-
-	if globalOpts.logfile != nil {
-		globalOpts.logfile.Printf(s, data...)
-	}
+// Options contains all global options.
+type Options struct {
+	Verbose      bool
+	Config       string
+	DryRun       bool
+	PollInterval time.Duration
+	ActivePoll   bool
+	Pause        time.Duration
 }
 
 func main() {
-	_, err := parser.Parse()
-	if e, ok := err.(*flags.Error); ok && e.Type == flags.ErrHelp {
+	flag.BoolVar(&opts.Verbose, "verbose", false, "Enable verbose logging")
+	flag.StringVar(&opts.Config, "config", "", "The path to a config file.")
+	flag.BoolVar(&opts.DryRun, "dry-run", false, "Enable dry-run mode: print commands instead of running them.")
+	flag.DurationVar(&opts.PollInterval, "interval", 2*time.Second, "Duration between polls. Set to zero to disable polling.")
+	flag.BoolVar(&opts.ActivePoll, "active-poll", false, "Force xrandr to re-detect outputs during polling.")
+	flag.DurationVar(&opts.Pause, "pause", 0, "Number of seconds to pause after a change was executed.")
+	flag.Parse()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	cfg, err := readConfig(opts.Config)
+	if err != nil {
+		slog.Error("could not read config file", "err", err)
+		os.Exit(1)
+	}
+
+	mm := &MonitorManager{
+		Config: cfg,
+	}
+
+	if len(os.Args) == 1 {
+		fmt.Printf("Please specify a command to run: %s", strings.Join(availableCommands(subCommands), ", "))
+		os.Exit(1)
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
+	subCmdName := os.Args[1]
+	args := os.Args[2:]
+
+	if subCmdName == "help" {
+		helpSubCmd(ctx, args)
 		os.Exit(0)
 	}
 
-	if err != nil {
+	subCmd, ok := resolveCommand(subCommands, subCmdName)
+	if !ok {
+		fmt.Printf("Unknown command %q.\nPlease specify one of the commands: %s\n", subCmdName, strings.Join(availableCommands(subCommands), ", "))
 		os.Exit(1)
 	}
+
+	if err := subCmd.Run(ctx, mm, args); err != nil {
+		slog.Error("command failed", "command", subCmdName, "err", err)
+		os.Exit(1)
+	}
+
+	os.Exit(0)
 }

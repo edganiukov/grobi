@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +18,21 @@ type Config struct {
 
 	ExecuteAfter []string `yaml:"execute_after"`
 	OnFailure    []string `yaml:"on_failure"`
+}
+
+// Valid returns an error if the config is invalid, ie a pattern is malformed.
+func (cfg Config) Valid() error {
+	for _, rule := range cfg.Rules {
+		for _, list := range [][]string{rule.OutputsPresent, rule.OutputsAbsent, rule.OutputsConnected, rule.OutputsDisconnected} {
+			for _, pat := range list {
+				if _, err := path.Match(pat, ""); err != nil {
+					return fmt.Errorf("pattern %q malformed: %v", pat, err)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // xdgConfigDir returns the config directory according to the xdg standard, see
@@ -36,12 +52,11 @@ func openConfigFile(name string) (io.ReadCloser, error) {
 		os.Getenv("GROBI_CONFIG"),
 		filepath.Join(xdgConfigDir(), "grobi.conf"),
 		filepath.Join(os.Getenv("HOME"), ".grobi.conf"),
-		"/etc/xdg/grobi.conf"} {
-		if filename != "" {
-			if f, err := os.Open(filename); err == nil {
-				V("reading config from %v\n", filename)
-				return f, nil
-			}
+		"/etc/xdg/grobi.conf",
+	} {
+		if f, err := os.Open(filename); err == nil {
+			slog.Debug("reading config from file", "file", filename)
+			return f, nil
 		}
 	}
 
@@ -76,20 +91,4 @@ func readConfig(name string) (Config, error) {
 	}
 
 	return cfg, nil
-}
-
-// Valid returns an error if the config is invalid, ie a pattern is malformed.
-func (cfg Config) Valid() error {
-
-	for _, rule := range cfg.Rules {
-		for _, list := range [][]string{rule.OutputsPresent, rule.OutputsAbsent, rule.OutputsConnected, rule.OutputsDisconnected} {
-			for _, pat := range list {
-				if _, err := path.Match(pat, ""); err != nil {
-					return fmt.Errorf("pattern %q malformed: %v", pat, err)
-				}
-			}
-		}
-	}
-
-	return nil
 }
