@@ -3,7 +3,7 @@ Description=grobi display auto config daemon
 
 [Service]
 Type=simple
-ExecStart=/home/ed/.go/bin/grobi watch -v
+ExecStart=/home/ed/.go/bin/grobi watch --verbose
 Restart=always
 RestartSec=2s
 
