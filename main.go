@@ -48,7 +48,7 @@ func main() {
 	}
 
 	if len(os.Args) == 1 {
-		fmt.Printf("Please specify a command to run: %s", strings.Join(availableCommands(subCommands), ", "))
+		fmt.Printf("Please specify a command to run: %s\n", strings.Join(availableCommands(subCommands), ", "))
 		os.Exit(1)
 	}
 

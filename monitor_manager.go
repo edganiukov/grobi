@@ -246,7 +246,7 @@ func ApplyRule(ctx context.Context, outputs Outputs, rule Rule, execAfter []stri
 
 	for _, cmd := range cmds {
 		if err := RunCommand(ctx, cmd); err != nil {
-			fmt.Fprintf(os.Stderr, "executing command for rule %v failed: %v\n", rule.Name, err)
+			slog.Error("executing command for rule failed", "rule", rule.Name, "err", err)
 		}
 	}
 
@@ -266,7 +266,7 @@ func MatchRules(rules []Rule, outputs Outputs) (Rule, error) {
 // RunCommand runs the given command or prints the arguments to stdout if opts.DryRun is true.
 func RunCommand(ctx context.Context, cmd *exec.Cmd) error {
 	if opts.DryRun {
-		fmt.Printf("%s\n", strings.Join(cmd.Args, " "))
+		slog.Info("dry-run command", "commad", strings.Join(cmd.Args, " "))
 		return nil
 	}
 
