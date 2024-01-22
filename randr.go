@@ -521,6 +521,10 @@ func BuildCommandOutputRow(rule Rule, current Outputs) ([]*exec.Cmd, error) {
 			args = append(args, "--dpi", output.DPI)
 		}
 
+		if output.Scale != "" {
+			args = append(args, "--scale", output.Scale)
+		}
+
 		if i > 0 {
 			if row {
 				args = append(args, "--right-of", lastOutput)

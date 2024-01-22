@@ -23,13 +23,14 @@ type Rule struct {
 }
 
 type OutputConfig struct {
-	Name string `yaml:"name"`
-	Mode string `yaml:"mode"`
-	DPI  string `yaml:"dpi"`
+	Name  string `yaml:"name"`
+	Mode  string `yaml:"mode"`
+	DPI   string `yaml:"dpi"`
+	Scale string `yaml:"scale"`
 }
 
 func (cfg OutputConfig) String() string {
-	return fmt.Sprintf("%s --mode %s --dpi %s", cfg.Name, cfg.Mode, cfg.DPI)
+	return fmt.Sprintf("%s --mode %s --dpi %s --scale %s", cfg.Name, cfg.Mode, cfg.DPI, cfg.Scale)
 }
 
 // Match returns true iff the rule matches for the given list of outputs.
