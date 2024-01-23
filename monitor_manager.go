@@ -239,7 +239,8 @@ func ApplyRule(ctx context.Context, outputs Outputs, rule Rule, execAfter []stri
 		return fmt.Errorf("no output configuration for rule %s", rule.Name)
 	}
 
-	after := append(execAfter, rule.ExecuteAfter...)
+	// First we execute command specific of the rule.
+	after := append(rule.ExecuteAfter, execAfter...)
 	for _, cmd := range after {
 		cmds = append(cmds, exec.Command("sh", "-c", cmd))
 	}
